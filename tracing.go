@@ -11,27 +11,45 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	jaeger "github.com/uber/jaeger-client-go"
 	config "github.com/uber/jaeger-client-go/config"
-	// "github.com/uber/jaeger-client-go/zipkin"
-	// "github.com/uber/jaeger-lib/metrics/prometheus"
+	jaegerlog "github.com/uber/jaeger-client-go/log"
+	"github.com/uber/jaeger-client-go/zipkin"
+	"github.com/uber/jaeger-lib/metrics"
 )
 
 // InitGlobalTracer sets the GlobalTracer to an instance of Jaeger Tracer that
-// samples 100% of traces and logs all spans to stdout.
+// loads the Jaeger tracer from the enviornment, samples 100% of traces, and logs all spans to stdout.
 func InitGlobalTracer(service string) (io.Closer, error) {
-	cfg := &config.Configuration{
-		Sampler: &config.SamplerConfig{
-			Type:  "const",
-			Param: 1,
-		},
-		Reporter: &config.ReporterConfig{
-			LogSpans: true,
-		},
+	//config from env
+	cfg, err := config.FromEnv()
+
+	//overrides
+	cfg.Sampler = &config.SamplerConfig{
+		Type:  jaeger.SamplerTypeConst,
+		Param: 1,
 	}
-	tracer, closer, err := cfg.New(service, config.Logger(jaeger.StdLogger))
+	cfg.Reporter.LogSpans = true
+
+	jLogger := jaegerlog.StdLogger
+	jMetricsFactory := metrics.NullFactory
+
+	// Zipkin shares span ID between client and server spans; it must be enabled via the following option.
+	zipkinPropagator := zipkin.NewZipkinB3HTTPHeaderPropagator()
+
+	// Create tracer and then initialize global tracer
+	closer, err := cfg.InitGlobalTracer(
+		service,
+		config.Logger(jLogger),
+		config.Metrics(jMetricsFactory),
+		config.Injector(opentracing.HTTPHeaders, zipkinPropagator),
+		config.Extractor(opentracing.HTTPHeaders, zipkinPropagator),
+		config.ZipkinSharedRPCSpan(true),
+	)
+
 	if err != nil {
-		return nil, err
+		log.Printf("Could not initialize jaeger tracer: %s", err.Error())
+		return closer, err
 	}
-	opentracing.SetGlobalTracer(tracer)
+
 	return closer, nil
 }
 
