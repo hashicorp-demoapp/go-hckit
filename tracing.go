@@ -17,7 +17,7 @@ import (
 )
 
 // InitGlobalTracer sets the GlobalTracer to an instance of Jaeger Tracer that
-// loads the Jaeger tracer from the enviornment, samples 100% of traces, and logs all spans to stdout.
+// loads the Jaeger tracer from the environment, samples 100% of traces, and logs all spans to stdout.
 func InitGlobalTracer(service string) (io.Closer, error) {
 	//config from env
 	cfg, err := config.FromEnv()
